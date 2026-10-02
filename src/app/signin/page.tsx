@@ -1,0 +1,6 @@
+"use client";
+import { signIn } from "next-auth/react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
+function SignInForm() { const params = useSearchParams(); const [error, setError] = useState(""); async function submit(form: FormData) { const result = await signIn("credentials", { email: form.get("email"), password: form.get("password"), callbackUrl: params.get("callbackUrl") ?? "/admin", redirect: false }); if (result?.error) setError("Email or password was not accepted."); else window.location.assign(result?.url ?? "/admin"); } return <main className="mx-auto max-w-md px-6 py-20"><h1 className="text-3xl font-semibold">Admin sign in</h1><form action={submit} className="mt-7 space-y-4 rounded-2xl bg-white p-6"><label className="block text-sm">Email<input name="email" type="email" required className="mt-1 block w-full rounded-xl border p-3"/></label><label className="block text-sm">Password<input name="password" type="password" required className="mt-1 block w-full rounded-xl border p-3"/></label>{error&&<p className="text-sm text-red-700">{error}</p>}<button className="rounded-full bg-[#17231f] px-6 py-3 text-white">Sign in</button></form></main>; }
+export default function SignInPage() { return <Suspense><SignInForm/></Suspense>; }

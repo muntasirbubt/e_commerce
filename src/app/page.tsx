@@ -1,0 +1,22 @@
+import Link from "next/link";
+import { Search, ArrowUpRight } from "lucide-react";
+import { db } from "@/lib/db";
+import { getStoreSettings } from "@/lib/config";
+import type { Prisma } from "@prisma/client";
+
+type CatalogProduct = Prisma.ProductGetPayload<{ include: { variants: true; category: true } }>;
+
+export default async function Home({ searchParams }: { searchParams: Promise<{ q?: string; category?: string; page?: string }> }) {
+  const [params, settings] = await Promise.all([searchParams, getStoreSettings()]);
+  const page = Math.max(1, Number(params.page) || 1);
+  const where = { isPublished: true, ...(params.q ? { title: { contains: params.q, mode: "insensitive" as const } } : {}), ...(params.category ? { category: { slug: params.category } } : {}) };
+  let products: CatalogProduct[] = [];
+  let categories: Awaited<ReturnType<typeof db.category.findMany>> = [];
+  let count = 0;
+  try { [products, categories, count] = await Promise.all([db.product.findMany({ where, include: { variants: true, category: true }, orderBy: { createdAt: "desc" }, skip: (page - 1) * 12, take: 12 }), db.category.findMany({ orderBy: { name: "asc" } }), db.product.count({ where })]); } catch {}
+  return <main><section className="bg-[#e7eddf] px-6 py-20 md:py-28"><div className="mx-auto max-w-7xl"><p className="mb-5 text-sm font-semibold uppercase tracking-[.2em] text-[#496b50]">Good things, thoughtfully chosen</p><h1 className="max-w-3xl text-5xl font-semibold leading-[1.04] tracking-tight md:text-7xl">Make room for<br/>the everyday.</h1><p className="mt-6 max-w-lg text-lg text-black/60">Useful objects, well made. Find the small upgrades that make your day feel a little better.</p><a href="#shop" className="mt-8 inline-flex items-center gap-2 rounded-full bg-[#17231f] px-6 py-3 text-sm font-medium text-white">Explore the collection <ArrowUpRight size={16}/></a></div></section>
+    <section id="shop" className="mx-auto max-w-7xl px-6 py-16"><div className="mb-8 flex flex-wrap items-end justify-between gap-5"><div><p className="text-sm uppercase tracking-[.15em] text-[#719159]">The collection</p><h2 className="mt-2 text-3xl font-semibold">Find your next favorite</h2></div><form className="flex gap-2" action="/"><input name="q" defaultValue={params.q} placeholder="Search products" className="w-48 rounded-full border border-black/15 bg-white px-4 py-2 text-sm"/><button aria-label="Search" className="rounded-full bg-[#17231f] p-3 text-white"><Search size={16}/></button></form></div>
+    <div className="mb-8 flex flex-wrap gap-2"><Link href="/" className="rounded-full border border-black/15 px-4 py-2 text-sm">Everything</Link>{categories.map((c) => <Link key={c.id} href={`/?category=${c.slug}`} className="rounded-full border border-black/15 px-4 py-2 text-sm">{c.name}</Link>)}</div>
+    {products.length ? <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{products.map((p) => { const qty = p.variants.reduce((sum, v) => sum + v.stockQuantity, 0); const price = p.variants.length ? Math.min(...p.variants.map(v => Number(v.price))) : 0; return <article key={p.id} className="group overflow-hidden rounded-2xl bg-white"><Link href={`/products/${p.slug}`}><div className="flex aspect-[4/3] items-center justify-center bg-[#e9ebe3] text-6xl">{p.imageUrl ? <img src={p.imageUrl} alt={p.title} className="h-full w-full object-cover"/> : "✳"}</div><div className="p-5"><div className="flex justify-between gap-4"><div><p className="text-xs uppercase tracking-wide text-black/40">{p.category?.name ?? "Collection"}</p><h3 className="mt-1 text-lg font-semibold">{p.title}</h3></div><span className="font-medium">{settings.currency} {price.toFixed(2)}</span></div><p className="mt-3 text-sm text-black/50">{qty ? qty <= settings.lowStockThreshold ? `Only ${qty} left` : "In stock" : "Out of stock"}</p></div></Link></article>; })}</div> : <div className="rounded-2xl border border-dashed border-black/20 p-14 text-center"><p className="text-xl font-medium">Your collection starts here</p><p className="mt-2 text-black/55">Publish products from the admin inventory panel to see them in the shop.</p></div>}
+    {count > 12 && <div className="mt-10 flex justify-center gap-3"><Link href={`/?page=${page - 1}`} aria-disabled={page <= 1} className="rounded-full border px-4 py-2">Previous</Link><span className="px-3 py-2">Page {page} of {Math.ceil(count / 12)}</span><Link href={`/?page=${page + 1}`} className="rounded-full border px-4 py-2">Next</Link></div>}</section></main>;
+}
