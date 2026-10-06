@@ -1,6 +1,72 @@
 @import "tailwindcss";
-:root { color-scheme: light; }
-* { box-sizing: border-box; }
-body { margin: 0; background: #f5f4ee; color: #17231f; font-family: Arial, Helvetica, sans-serif; }
-a { color: inherit; text-decoration: none; }
-button, input, select, textarea { font: inherit; }
+:root {
+  color-scheme: light;
+  --forest: #1b3b2b;
+  --sage: #84a98c;
+  --ivory: #f8f9f5;
+  --charcoal: #212529;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--ivory);
+  color: var(--charcoal);
+  font-family: Arial, Helvetica, sans-serif;
+}
+a {
+  color: inherit;
+  text-decoration: none;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+input,
+select,
+textarea {
+  color: #212529;
+}
+input::placeholder,
+textarea::placeholder {
+  color: #66736a;
+  opacity: 1;
+}
+option {
+  color: #212529;
+  background: #fff;
+}
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid #84a98c;
+  outline-offset: 2px;
+}
+::selection {
+  background: #b5d1b8;
+  color: #1b3b2b;
+}
+.glass-panel {
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  box-shadow: 0 24px 80px rgba(20, 44, 30, 0.13);
+  backdrop-filter: blur(20px);
+}
+.soft-card {
+  border: 1px solid rgba(27, 59, 43, 0.08);
+  border-radius: 1.35rem;
+  background: white;
+  box-shadow: 0 8px 30px rgba(27, 59, 43, 0.045);
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease;
+}
+.soft-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 16px 42px rgba(27, 59, 43, 0.1);
+}

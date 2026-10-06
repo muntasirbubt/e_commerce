@@ -1,0 +1,16 @@
+### For Running This Project 
+
+1. npm install
+2. npx prisma migrate dev — run when setting up the database for the first time or after a developer adds a new Prisma migration. You’ve already run it, so you don’t need to repeat it just to start the site.
+3. npm run db:seed — run to create or refresh the admin account and sample product data. You’ve already run it. Run it again if you change ADMIN_EMAIL or ADMIN_PASSWORD and want that change applied to the database.
+4. npm run dev  ( This will run in development mode - like when we do any chane it automatic reload.)
+
+For production replace 4 th command by
+- npm run build
+- npm start
+
+
+
+#### For Pgadmin check status
+sudo service postgresql status
+pg_isready -h localhost -p 5432
