@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { requireAdmin } from "@/lib/admin";
+import { requireStaff } from "@/lib/admin";
 const schema = z.object({
   variantId: z.string(),
   changeQuantity: z
@@ -11,17 +11,11 @@ const schema = z.object({
   reason: z.string().min(3).max(200),
 });
 export async function POST(request: NextRequest) {
-  if (!(await requireAdmin()))
-    return NextResponse.json(
-      { error: "Admin access required." },
-      { status: 401 },
-    );
+  if (!(await requireStaff()))
+    return NextResponse.json({ error: "Admin access required." }, { status: 401 });
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success)
-    return NextResponse.json(
-      { error: "Invalid inventory adjustment." },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Invalid inventory adjustment." }, { status: 400 });
   const { variantId, changeQuantity, reason } = parsed.data;
   try {
     const result = await db.$transaction(async (tx) => {
@@ -29,11 +23,20 @@ export async function POST(request: NextRequest) {
         where: { id: variantId },
       });
       if (!variant) throw new Error("Variant not found.");
-      const stockQuantity = variant.stockQuantity + changeQuantity;
-      if (stockQuantity < 0) throw new Error("Inventory cannot be negative.");
-      await tx.productVariant.update({
+      const changed =
+        changeQuantity > 0
+          ? await tx.productVariant.updateMany({
+              where: { id: variantId },
+              data: { stockQuantity: { increment: changeQuantity } },
+            })
+          : await tx.productVariant.updateMany({
+              where: { id: variantId, stockQuantity: { gte: -changeQuantity } },
+              data: { stockQuantity: { decrement: -changeQuantity } },
+            });
+      if (changed.count !== 1) throw new Error("Inventory cannot be negative.");
+      const { stockQuantity } = await tx.productVariant.findUniqueOrThrow({
         where: { id: variantId },
-        data: { stockQuantity },
+        select: { stockQuantity: true },
       });
       await tx.inventoryLog.create({
         data: { variantId, changeQuantity, reason },

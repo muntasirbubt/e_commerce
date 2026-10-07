@@ -34,10 +34,14 @@ const product = z.object({
   categoryId: z.string().nullable().optional(),
   isPublished: z.boolean().default(false),
   isUpcoming: z.boolean().default(false),
+  featuredOffer: z.boolean().default(false),
+  featuredUpcoming: z.boolean().default(false),
   launchAt: z.string().datetime().nullable().optional(),
   seoTitle: z.string().max(70).optional(),
   seoDescription: z.string().max(180).optional(),
   specifications: z.record(z.string(), z.string()).default({}),
+  fitType: z.string().max(40).nullable().optional(),
+  material: z.string().max(80).nullable().optional(),
   variants: z.array(variant).min(1),
 });
 export async function POST(request: NextRequest) {
@@ -65,14 +69,20 @@ export async function POST(request: NextRequest) {
         categoryId: data.categoryId || null,
         isPublished: data.isPublished,
         isUpcoming: data.isUpcoming,
+        featuredOffer: data.featuredOffer,
+        featuredUpcoming: data.featuredUpcoming,
         launchAt: data.launchAt ? new Date(data.launchAt) : null,
         seoTitle: data.seoTitle,
         seoDescription: data.seoDescription,
         specifications: data.specifications,
+        fitType: data.fitType ?? null,
+        material: data.material ?? null,
         variants: {
           create: data.variants.map((v) => ({
             ...v,
             attributesJson: v.attributesJson,
+            size: v.attributesJson.Size ?? null,
+            color: v.attributesJson.Color ?? null,
           })),
         },
         media: {

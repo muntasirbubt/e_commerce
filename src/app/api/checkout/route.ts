@@ -2,13 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import Stripe from "stripe";
 import { db } from "@/lib/db";
-import { getStoreSettings } from "@/lib/config";
+import { computeShipping, getStoreSettings } from "@/lib/config";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { sendOrderConfirmation } from "@/lib/mail";
 
 const schema = z.object({
   customerName: z.string().min(1),
   customerEmail: z.string().email(),
+  customerPhone: z
+    .string()
+    .trim()
+    .regex(/^\+?[0-9][0-9\s().-]{6,19}$/, "Enter a valid phone number."),
   address: z.object({
     line1: z.string().min(1),
     line2: z.string().optional(),
@@ -16,6 +21,8 @@ const schema = z.object({
     region: z.string().min(1),
     postalCode: z.string().min(1),
     country: z.string().min(2),
+    landmark: z.string().max(180).optional(),
+    deliveryNotes: z.string().max(500).optional(),
   }),
   paymentMethod: z.string(),
   couponCode: z.string().max(40).optional(),
@@ -33,40 +40,25 @@ const schema = z.object({
 export async function POST(request: NextRequest) {
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success)
-    return NextResponse.json(
-      { error: "Please check the checkout details." },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Please check the checkout details." }, { status: 400 });
   const input = parsed.data;
   const settings = await getStoreSettings();
   const providers = settings.activePaymentProviders.filter((p) =>
     p === "stripe"
       ? settings.gatewayEnabled &&
-        Boolean(
-          process.env.STRIPE_SECRET_KEY &&
-            process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
-        )
+        Boolean(process.env.STRIPE_SECRET_KEY && process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)
       : p !== "paypal",
   );
   if (!providers.includes(input.paymentMethod))
-    return NextResponse.json(
-      { error: "That payment method is not available." },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "That payment method is not available." }, { status: 400 });
   if (
     input.paymentMethod === "stripe" &&
     (!settings.gatewayEnabled || !process.env.STRIPE_SECRET_KEY)
   )
-    return NextResponse.json(
-      { error: "Card checkout is not configured." },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Card checkout is not configured." }, { status: 400 });
   const aggregated = new Map<string, number>();
   input.items.forEach((item) =>
-    aggregated.set(
-      item.variantId,
-      (aggregated.get(item.variantId) ?? 0) + item.quantity,
-    ),
+    aggregated.set(item.variantId, (aggregated.get(item.variantId) ?? 0) + item.quantity),
   );
   const quantities = [...aggregated.entries()];
   const session = await getServerSession(authOptions);
@@ -93,9 +85,7 @@ export async function POST(request: NextRequest) {
           data: { stockQuantity: { decrement: quantity } },
         });
         if (updated.count !== 1)
-          throw new Error(
-            `${variant.product.title} does not have enough stock.`,
-          );
+          throw new Error(`${variant.product.title} does not have enough stock.`);
         await tx.inventoryLog.create({
           data: {
             variantId: id,
@@ -123,8 +113,7 @@ export async function POST(request: NextRequest) {
           !coupon.active ||
           (coupon.startsAt && coupon.startsAt > now) ||
           (coupon.endsAt && coupon.endsAt < now) ||
-          (coupon.maxRedemptions !== null &&
-            coupon.redemptionCount >= coupon.maxRedemptions)
+          (coupon.maxRedemptions !== null && coupon.redemptionCount >= coupon.maxRedemptions)
         )
           throw new Error("That promo code is invalid or no longer active.");
         discountAmount = Math.min(
@@ -134,8 +123,7 @@ export async function POST(request: NextRequest) {
             : Number(coupon.amount),
         );
         discountAmount = Math.round(discountAmount * 100) / 100;
-        if (discountAmount <= 0)
-          throw new Error("This order does not qualify for that code.");
+        if (discountAmount <= 0) throw new Error("This order does not qualify for that code.");
         const redeemed = await tx.coupon.updateMany({
           where: {
             id: coupon.id,
@@ -151,20 +139,21 @@ export async function POST(request: NextRequest) {
         couponId = coupon.id;
         couponCode = coupon.code;
       }
+      const shippingAmount = computeShipping(subtotal - discountAmount, settings);
       const order = await tx.order.create({
         data: {
           orderNumber,
           userId: session?.user.id,
           customerName: input.customerName,
           customerEmail: input.customerEmail,
-          totalAmount: subtotal - discountAmount + settings.shippingFee,
-          shippingAmount: settings.shippingFee,
+          customerPhone: input.customerPhone,
+          totalAmount: subtotal - discountAmount + shippingAmount,
+          shippingAmount,
           discountAmount,
           couponId,
           couponCode,
           paymentMethod: input.paymentMethod,
-          paymentStatus:
-            input.paymentMethod === "stripe" ? "PENDING" : "UNPAID",
+          paymentStatus: input.paymentMethod === "stripe" ? "PENDING" : "UNPAID",
           shippingAddress: input.address,
           items: {
             create: quantities.map(([variantId, quantity]) => ({
@@ -175,9 +164,7 @@ export async function POST(request: NextRequest) {
           },
         },
       });
-      const rawLineCents = quantities.map(([id, q]) =>
-        Math.round(unitPrices.get(id)! * q * 100),
-      );
+      const rawLineCents = quantities.map(([id, q]) => Math.round(unitPrices.get(id)! * q * 100));
       const subtotalCents = rawLineCents.reduce((a, b) => a + b, 0);
       const discountCents = Math.round(discountAmount * 100);
       const allocations = rawLineCents.map((x) =>
@@ -201,16 +188,22 @@ export async function POST(request: NextRequest) {
           },
         },
       }));
-      if (settings.shippingFee > 0)
+      if (shippingAmount > 0)
         stripeLines.push({
           quantity: 1,
           price_data: {
             currency: settings.currency.toLowerCase(),
-            unit_amount: Math.round(settings.shippingFee * 100),
+            unit_amount: Math.round(shippingAmount * 100),
             product_data: { name: "Shipping", description: "Delivery fee" },
           },
         });
-      return { order, stripeLines };
+      const mailItems = quantities.map(([variantId, quantity]) => ({
+        quantity,
+        price: unitPrices.get(variantId)!,
+        title: byId.get(variantId)!.product.title,
+        sku: byId.get(variantId)!.sku,
+      }));
+      return { order, stripeLines, mailItems };
     });
     createdOrderId = created.order.id;
     if (input.paymentMethod === "stripe") {
@@ -229,10 +222,8 @@ export async function POST(request: NextRequest) {
       });
       return NextResponse.json({ orderNumber, checkoutUrl: checkout.url });
     }
-    return NextResponse.json(
-      { orderNumber, message: "Order received" },
-      { status: 201 },
-    );
+    await sendOrderConfirmation({ ...created.order, items: created.mailItems });
+    return NextResponse.json({ orderNumber, message: "Order received" }, { status: 201 });
   } catch (error) {
     if (createdOrderId)
       await db.$transaction(async (tx) => {
@@ -266,8 +257,7 @@ export async function POST(request: NextRequest) {
       });
     return NextResponse.json(
       {
-        error:
-          error instanceof Error ? error.message : "Could not place order.",
+        error: error instanceof Error ? error.message : "Could not place order.",
       },
       { status: 409 },
     );

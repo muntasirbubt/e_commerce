@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 const links = [
-  { label: "Shop", href: "/#shop", id: "shop" },
+  { label: "Shop", href: "/shop", id: "/shop" },
   { label: "Offers", href: "/#offers", id: "offers" },
   { label: "Coming soon", href: "/#upcoming", id: "upcoming" },
   { label: "Our story", href: "/about", id: "/about" },

@@ -20,7 +20,7 @@ export function SiteFooter({ storeName }: { storeName: string }) {
         <div>
           <h2 className="text-sm font-semibold">Explore</h2>
           <div className="mt-4 grid gap-3 text-sm text-white/80">
-            <Link href="/#shop">Shop all</Link>
+            <Link href="/shop">Shop all</Link>
             <Link href="/#offers">Special offers</Link>
             <Link href="/#upcoming">Coming soon</Link>
           </div>

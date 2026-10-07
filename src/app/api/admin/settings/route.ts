@@ -8,6 +8,7 @@ const schema = z.object({
     z.enum(["cod", "bank_transfer", "order_request", "stripe", "paypal"]),
   ),
   shippingFee: z.number().min(0),
+  freeShippingThreshold: z.number().min(0).nullable(),
   lowStockThreshold: z.number().int().min(0),
   storeName: z.string().min(1).max(80),
   currency: z.string().length(3),

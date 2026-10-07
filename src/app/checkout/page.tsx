@@ -14,6 +14,7 @@ export default async function CheckoutPage() {
       <CheckoutForm
         providers={providers}
         shippingFee={settings.shippingFee}
+        freeShippingThreshold={settings.freeShippingThreshold}
         currency={settings.currency}
       />
     </main>

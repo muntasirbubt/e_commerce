@@ -5,6 +5,8 @@ import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getStoreSettings } from "@/lib/config";
 import type { Prisma } from "@prisma/client";
+import { AdminOrderActions } from "@/components/admin-order-actions";
+import { OrderStatusTracker } from "@/components/order-status-tracker";
 
 const PAGE_SIZE = 50;
 
@@ -42,7 +44,7 @@ export default async function AllOrdersPage({ searchParams }: { searchParams: Se
       }
     : {};
 
-  const [orders, total, settings] = await Promise.all([
+  const [orders, total, settings, stockVariants] = await Promise.all([
     db.order.findMany({
       where,
       include: {
@@ -58,6 +60,11 @@ export default async function AllOrdersPage({ searchParams }: { searchParams: Se
     }),
     db.order.count({ where }),
     getStoreSettings(),
+    db.productVariant.findMany({
+      where: { product: { isPublished: true } },
+      include: { product: { select: { title: true } } },
+      orderBy: { sku: "asc" },
+    }),
   ]);
 
   const timeZone = process.env.STORE_TIMEZONE || "Asia/Dhaka";
@@ -142,6 +149,12 @@ export default async function AllOrdersPage({ searchParams }: { searchParams: Se
                 orders={dateOrders ?? []}
                 currency={settings.currency}
                 timeZone={timeZone}
+                variants={stockVariants.map((v) => ({
+                  id: v.id,
+                  sku: v.sku,
+                  price: Number(v.salePrice ?? v.price),
+                  title: `${v.product.title}${v.size ? ` · ${v.size}` : ""}${v.color ? ` · ${v.color}` : ""}`,
+                }))}
               />
             ))
           : orders.length > 0 && (
@@ -150,6 +163,12 @@ export default async function AllOrdersPage({ searchParams }: { searchParams: Se
                 orders={orders}
                 currency={settings.currency}
                 timeZone={timeZone}
+                variants={stockVariants.map((v) => ({
+                  id: v.id,
+                  sku: v.sku,
+                  price: Number(v.salePrice ?? v.price),
+                  title: `${v.product.title}${v.size ? ` · ${v.size}` : ""}${v.color ? ` · ${v.color}` : ""}`,
+                }))}
               />
             )}
         {!orders.length && (
@@ -198,52 +217,104 @@ function OrderGroup({
   orders,
   currency,
   timeZone,
+  variants,
 }: {
   title: string;
   orders: OrderWithItems[];
   currency: string;
   timeZone: string;
+  variants: { id: string; sku: string; price: number; title: string }[];
 }) {
   return (
     <section className="overflow-hidden rounded-2xl border border-[#1b3b2b]/10 bg-white">
       <h2 className="border-b border-[#1b3b2b]/10 bg-[#f4f7f2] px-5 py-3 text-sm font-semibold text-[#263a2c]">
         {title}
       </h2>
-      <div className="divide-y divide-[#1b3b2b]/10">
-        {orders.map((order) => (
-          <article
-            key={order.id}
-            className="grid gap-3 px-5 py-4 md:grid-cols-[1fr_1fr_auto_auto] md:items-center"
-          >
-            <div>
-              <p className="font-semibold text-[#1b3b2b]">{order.orderNumber}</p>
-              <p className="mt-1 text-sm text-[#34473b]">{order.customerName}</p>
-              <p className="text-xs text-[#56645a]">{order.customerEmail}</p>
-            </div>
-            <div className="text-sm text-[#34473b]">
-              {order.items.map((item) => (
-                <p key={item.id}>
-                  {item.variant.product.title} × {item.quantity}
-                </p>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[1120px] text-left">
+          <thead className="bg-[#fbfcfa] text-[10px] font-semibold uppercase tracking-wider text-[#748176]">
+            <tr>
+              {[
+                "Order ID",
+                "Customer / phone",
+                "Total",
+                "Order date",
+                "Status progress",
+                "Quick actions",
+              ].map((heading) => (
+                <th key={heading} className="px-4 py-3">
+                  {heading}
+                </th>
               ))}
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-[#1b3b2b]">
-                {currency} {Number(order.totalAmount).toFixed(2)}
-              </p>
-              <p className="mt-1 text-xs text-[#56645a]">
-                {order.status} · {order.paymentStatus}
-              </p>
-            </div>
-            <time dateTime={order.createdAt.toISOString()} className="text-xs text-[#56645a]">
-              {new Intl.DateTimeFormat("en", {
-                timeZone,
-                dateStyle: "medium",
-                timeStyle: "short",
-              }).format(order.createdAt)}
-            </time>
-          </article>
-        ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[#1b3b2b]/[.08]">
+            {orders.map((order) => (
+              <tr key={order.id} className="align-middle hover:bg-[#fbfcfa]">
+                <td className="whitespace-nowrap px-4 py-3 text-xs font-semibold text-[#1b3b2b]">
+                  {order.orderNumber}
+                </td>
+                <td className="px-4 py-3">
+                  <p className="whitespace-nowrap text-xs font-medium text-[#34473b]">
+                    {order.customerName}
+                  </p>
+                  <p className="mt-1 whitespace-nowrap text-[10px] text-[#718075]">
+                    {order.customerPhone || "No phone"}
+                  </p>
+                </td>
+                <td className="whitespace-nowrap px-4 py-3">
+                  <span className="text-xs font-semibold text-[#1b3b2b]">
+                    {currency} {Number(order.totalAmount).toFixed(2)}
+                  </span>
+                  {order.paymentMethod === "cod" && (
+                    <span className="ml-2 rounded-full bg-[#edf3eb] px-2 py-1 text-[9px] font-semibold uppercase tracking-wide text-[#315a3b]">
+                      COD · {order.paymentStatus === "PAID" ? "Collected" : "Pending"}
+                    </span>
+                  )}
+                </td>
+                <td className="whitespace-nowrap px-4 py-3 text-[10px] text-[#56645a]">
+                  {new Intl.DateTimeFormat("en", {
+                    timeZone,
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  }).format(order.createdAt)}
+                </td>
+                <td className="px-4 py-3">
+                  <OrderStatusTracker status={order.status} />
+                </td>
+                <td className="min-w-[245px] px-4 py-2">
+                  <AdminOrderActions
+                    order={{
+                      id: order.id,
+                      status: order.status,
+                      paymentMethod: order.paymentMethod,
+                      discountAmount: Number(order.discountAmount),
+                      shippingAmount: Number(order.shippingAmount),
+                      shippingAddress: order.shippingAddress as {
+                        line1: string;
+                        line2?: string;
+                        city: string;
+                        region: string;
+                        postalCode: string;
+                        country: string;
+                        landmark?: string;
+                        deliveryNotes?: string;
+                      },
+                      items: order.items.map((item) => ({
+                        variantId: item.variantId,
+                        quantity: item.quantity,
+                        price: Number(item.price),
+                        label: item.variant.product.title,
+                      })),
+                    }}
+                    variants={variants}
+                    currency={currency}
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </section>
   );

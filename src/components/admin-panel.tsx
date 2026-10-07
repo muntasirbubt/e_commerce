@@ -9,6 +9,7 @@ import {
   Settings2,
 } from "lucide-react";
 import Link from "next/link";
+import { OrderStatusTracker } from "@/components/order-status-tracker";
 type Variant = {
   id: string;
   sku: string;
@@ -31,6 +32,7 @@ type Settings = {
   gatewayEnabled: boolean;
   activePaymentProviders: string[];
   shippingFee: number;
+  freeShippingThreshold: number | null;
   lowStockThreshold: number;
   storeName: string;
   currency: string;
@@ -45,7 +47,9 @@ type Props = {
     orderNumber: string;
     customerName: string;
     customerEmail: string;
+    customerPhone: string;
     totalAmount: number | string;
+    paymentMethod: string;
     status: string;
     paymentStatus: string;
     createdAt: string;
@@ -151,6 +155,10 @@ export function AdminPanel({
       storeName: String(form.get("storeName")),
       currency: String(form.get("currency")).toUpperCase(),
       shippingFee: Number(form.get("shippingFee")),
+      freeShippingThreshold:
+        String(form.get("freeShippingThreshold") ?? "").trim() === ""
+          ? null
+          : Number(form.get("freeShippingThreshold")),
       lowStockThreshold: Number(form.get("lowStockThreshold")),
       gatewayEnabled: form.get("gatewayEnabled") === "on",
       activePaymentProviders: form.getAll("providers").map(String),
@@ -449,44 +457,64 @@ export function AdminPanel({
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b text-[#4f5d53]">
-                  {["Order", "Customer", "Items", "Total", "Order status", "Payment", "Placed"].map(
-                    (heading) => (
-                      <th key={heading} className="p-4">
-                        {heading}
-                      </th>
-                    ),
-                  )}
+                  {[
+                    "Order",
+                    "Customer / phone",
+                    "Total",
+                    "Status progress",
+                    "Placed",
+                    "Quick edit",
+                  ].map((heading) => (
+                    <th key={heading} className="p-4">
+                      {heading}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {visibleOrders.map((order) => (
-                  <tr key={order.id} className="border-b border-black/5">
-                    <td className="p-4 font-medium">{order.orderNumber}</td>
-                    <td className="p-4">
-                      {order.customerName}
-                      <span className="mt-1 block text-xs text-[#56645a]">
-                        {order.customerEmail}
+                  <tr key={order.id} className="border-b border-black/5 hover:bg-[#fbfcfa]">
+                    <td className="whitespace-nowrap px-4 py-3 text-xs font-semibold text-[#1b3b2b]">
+                      {order.orderNumber}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="whitespace-nowrap text-xs font-medium text-[#34473b]">
+                        {order.customerName}
+                      </span>
+                      <span className="mt-1 block whitespace-nowrap text-[10px] text-[#718075]">
+                        {order.customerPhone || "No phone"}
                       </span>
                     </td>
-                    <td className="p-4">
-                      {order.items.map((item) => item.variant.product.title).join(", ")}
-                    </td>
-                    <td className="p-4">
+                    <td className="whitespace-nowrap px-4 py-3 text-xs font-semibold text-[#1b3b2b]">
                       {settings.currency} {Number(order.totalAmount).toFixed(2)}
+                      {order.paymentMethod === "cod" && (
+                        <span className="ml-2 rounded-full bg-[#edf3eb] px-2 py-1 text-[9px] font-semibold text-[#315a3b]">
+                          COD
+                        </span>
+                      )}
                     </td>
-                    <td className="p-4">{order.status}</td>
-                    <td className="p-4">{order.paymentStatus}</td>
-                    <td className="p-4">
+                    <td className="px-4 py-3">
+                      <OrderStatusTracker status={order.status} />
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-xs text-[#56645a]">
                       {new Date(order.createdAt).toLocaleTimeString([], {
                         hour: "2-digit",
                         minute: "2-digit",
                       })}
                     </td>
+                    <td className="px-4 py-3">
+                      <Link
+                        href={`/admin/orders?q=${encodeURIComponent(order.orderNumber)}`}
+                        className="whitespace-nowrap rounded-full border border-[#1b3b2b]/15 px-3 py-2 text-[10px] font-semibold text-[#315a3b] hover:bg-[#f0f5ef]"
+                      >
+                        Open / edit
+                      </Link>
+                    </td>
                   </tr>
                 ))}
                 {!visibleOrders.length && (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-[#56645a]">
+                    <td colSpan={6} className="p-8 text-center text-[#56645a]">
                       {orders.length
                         ? "No orders match this search."
                         : "No orders have been placed today."}
@@ -529,6 +557,17 @@ export function AdminPanel({
               min="0"
               step="0.01"
               defaultValue={settings.shippingFee}
+              className="mt-1 block w-full rounded-lg border p-3"
+            />
+          </label>
+          <label className="text-sm">
+            Free shipping from (blank = off)
+            <input
+              name="freeShippingThreshold"
+              type="number"
+              min="0"
+              step="0.01"
+              defaultValue={settings.freeShippingThreshold ?? ""}
               className="mt-1 block w-full rounded-lg border p-3"
             />
           </label>

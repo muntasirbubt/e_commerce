@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { db } from "@/lib/db";
+import { sendOrderConfirmation } from "@/lib/mail";
 export async function POST(request: NextRequest) {
   if (!process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_WEBHOOK_SECRET)
     return NextResponse.json(
@@ -21,11 +22,28 @@ export async function POST(request: NextRequest) {
   }
   if (event.type === "checkout.session.completed") {
     const checkout = event.data.object as Stripe.Checkout.Session;
-    if (checkout.metadata?.orderId)
-      await db.order.updateMany({
+    if (checkout.metadata?.orderId) {
+      const paid = await db.order.updateMany({
         where: { id: checkout.metadata.orderId, paymentStatus: "PENDING" },
         data: { paymentStatus: "PAID", status: "PROCESSING" },
       });
+      if (paid.count === 1) {
+        const order = await db.order.findUnique({
+          where: { id: checkout.metadata.orderId },
+          include: { items: { include: { variant: { include: { product: true } } } } },
+        });
+        if (order)
+          await sendOrderConfirmation({
+            ...order,
+            items: order.items.map((i) => ({
+              quantity: i.quantity,
+              price: i.price,
+              title: i.variant.product.title,
+              sku: i.variant.sku,
+            })),
+          });
+      }
+    }
   } else if (event.type === "checkout.session.expired") {
     const checkout = event.data.object as Stripe.Checkout.Session;
     const orderId = checkout.metadata?.orderId;

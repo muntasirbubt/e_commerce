@@ -66,7 +66,7 @@ export default async function OrdersPage() {
         {!orders.length && (
           <div className="rounded-2xl border border-dashed border-[#1b3b2b]/20 p-10 text-center text-sm text-[#78857a]">
             No orders yet.{" "}
-            <Link href="/#shop" className="underline">
+            <Link href="/shop" className="underline">
               Find something you love.
             </Link>
           </div>

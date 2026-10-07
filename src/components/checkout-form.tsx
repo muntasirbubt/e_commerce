@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { Check, LoaderCircle, Tag, Trash2 } from "lucide-react";
+import { Check, LoaderCircle, Tag, Trash2, Truck } from "lucide-react";
+import { computeShipping } from "@/lib/shipping";
 type CartItem = { variantId: string; quantity: number };
 type CartRow = {
   id: string;
@@ -20,10 +21,12 @@ type Coupon = {
 export function CheckoutForm({
   providers,
   shippingFee,
+  freeShippingThreshold,
   currency,
 }: {
   providers: string[];
   shippingFee: number;
+  freeShippingThreshold: number | null;
   currency: string;
 }) {
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -36,9 +39,7 @@ export function CheckoutForm({
   const [couponMessage, setCouponMessage] = useState("");
   const [couponBusy, setCouponBusy] = useState(false);
   useEffect(() => {
-    const items = JSON.parse(
-      localStorage.getItem("cart") ?? "[]",
-    ) as CartItem[];
+    const items = JSON.parse(localStorage.getItem("cart") ?? "[]") as CartItem[];
     setCart(items);
     if (items.length)
       fetch("/api/cart", {
@@ -48,18 +49,14 @@ export function CheckoutForm({
       })
         .then((r) => r.json())
         .then((d) => setRows(d.items ?? []))
-        .catch(() =>
-          setError("Could not load your cart. Refresh and try again."),
-        );
+        .catch(() => setError("Could not load your cart. Refresh and try again."));
   }, []);
   const subtotal = useMemo(
     () =>
       rows.reduce(
         (sum, row) =>
           sum +
-          (row.salePrice && row.salePrice < row.price
-            ? row.salePrice
-            : row.price) *
+          (row.salePrice && row.salePrice < row.price ? row.salePrice : row.price) *
             (cart.find((x) => x.variantId === row.id)?.quantity ?? 0),
         0,
       ),
@@ -93,6 +90,8 @@ export function CheckoutForm({
       region: String(formData.get("region")),
       postalCode: String(formData.get("postalCode")),
       country: String(formData.get("country")),
+      landmark: String(formData.get("landmark") ?? ""),
+      deliveryNotes: String(formData.get("deliveryNotes") ?? ""),
     };
     const response = await fetch("/api/checkout", {
       method: "POST",
@@ -100,6 +99,7 @@ export function CheckoutForm({
       body: JSON.stringify({
         customerName: formData.get("name"),
         customerEmail: formData.get("email"),
+        customerPhone: formData.get("phone"),
         address,
         paymentMethod: formData.get("paymentMethod"),
         couponCode: applied?.code,
@@ -120,22 +120,23 @@ export function CheckoutForm({
     setDone(result.orderNumber);
   }
   const discount = applied ? Math.min(subtotal, applied.discountAmount) : 0,
-    total = subtotal - discount + shippingFee;
+    shipping = computeShipping(subtotal - discount, { shippingFee, freeShippingThreshold }),
+    total = subtotal - discount + shipping,
+    remainingForFree =
+      freeShippingThreshold !== null && shippingFee > 0
+        ? Math.max(0, freeShippingThreshold - (subtotal - discount))
+        : 0;
   if (done)
     return (
       <div className="mt-10 rounded-[1.6rem] bg-white p-9 text-center">
         <span className="mx-auto grid size-12 place-items-center rounded-full bg-[#eaf2e9] text-[#4e7055]">
           <Check />
         </span>
-        <h2 className="mt-4 font-serif text-3xl text-[#1b3b2b]">
-          Thank you for your order.
-        </h2>
+        <h2 className="mt-4 font-serif text-3xl text-[#1b3b2b]">Thank you for your order.</h2>
         <p className="mt-3 text-sm text-[#718075]">
           Order reference: <strong className="text-[#304536]">{done}</strong>
         </p>
-        <p className="mt-2 text-xs text-[#8a948b]">
-          We’ll be in touch with next steps.
-        </p>
+        <p className="mt-2 text-xs text-[#8a948b]">We’ll be in touch with next steps.</p>
         <a
           className="mt-6 inline-block rounded-full bg-[#1b3b2b] px-6 py-3 text-xs text-white"
           href="/"
@@ -151,13 +152,12 @@ export function CheckoutForm({
           <p className="text-[10px] font-semibold uppercase tracking-[.2em] text-[#73917a]">
             Where should we send it?
           </p>
-          <h2 className="mt-1 font-serif text-2xl text-[#1b3b2b]">
-            Your details
-          </h2>
+          <h2 className="mt-1 font-serif text-2xl text-[#1b3b2b]">Your details</h2>
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             {[
               ["name", "Full name", "text"],
               ["email", "Email address", "email"],
+              ["phone", "Phone number", "tel"],
               ["line1", "Street address", "text"],
               ["line2", "Apartment or suite · optional", "text"],
               ["city", "City", "text"],
@@ -171,6 +171,12 @@ export function CheckoutForm({
                   name={id}
                   type={type}
                   required={!id.includes("line2")}
+                  pattern={id === "phone" ? "\\+?[0-9][0-9\\s().-]{6,19}" : undefined}
+                  title={
+                    id === "phone"
+                      ? "Enter a valid phone number, including country code if needed."
+                      : undefined
+                  }
                   autoComplete={
                     id === "name"
                       ? "name"
@@ -184,6 +190,22 @@ export function CheckoutForm({
                 />
               </label>
             ))}
+          </div>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <label className="text-xs font-medium text-[#68776b]">
+              Nearby landmark <span className="font-normal">(optional)</span>
+              <input
+                name="landmark"
+                className="mt-1.5 block w-full rounded-xl border border-[#1b3b2b]/10 bg-[#fbfcfa] px-3 py-3 text-sm"
+              />
+            </label>
+            <label className="text-xs font-medium text-[#68776b]">
+              Delivery notes <span className="font-normal">(optional)</span>
+              <input
+                name="deliveryNotes"
+                className="mt-1.5 block w-full rounded-xl border border-[#1b3b2b]/10 bg-[#fbfcfa] px-3 py-3 text-sm"
+              />
+            </label>
           </div>
         </section>
         <section className="rounded-[1.4rem] border border-[#1b3b2b]/10 bg-white p-6 sm:p-7">
@@ -203,7 +225,9 @@ export function CheckoutForm({
                     name="paymentMethod"
                     value={p}
                     required
-                    defaultChecked={providers[0] === p}
+                    defaultChecked={
+                      p === "cod" || (!providers.includes("cod") && providers[0] === p)
+                    }
                   />
                   <span>
                     {(
@@ -226,10 +250,7 @@ export function CheckoutForm({
           )}
         </section>
         {error && (
-          <p
-            role="alert"
-            className="rounded-xl bg-red-50 p-4 text-xs text-red-700"
-          >
+          <p role="alert" className="rounded-xl bg-red-50 p-4 text-xs text-red-700">
             {error}
           </p>
         )}
@@ -249,23 +270,16 @@ export function CheckoutForm({
         {!cart.length && (
           <p className="mt-4 text-xs text-[#7c897f]">
             Your bag is empty.{" "}
-            <a href="/#shop" className="underline">
+            <a href="/shop" className="underline">
               Browse the shop
             </a>
           </p>
         )}
         {rows.map((row) => {
-          const quantity =
-              cart.find((x) => x.variantId === row.id)?.quantity ?? 0,
-            price =
-              row.salePrice && row.salePrice < row.price
-                ? row.salePrice
-                : row.price;
+          const quantity = cart.find((x) => x.variantId === row.id)?.quantity ?? 0,
+            price = row.salePrice && row.salePrice < row.price ? row.salePrice : row.price;
           return (
-            <div
-              key={row.id}
-              className="mt-5 flex justify-between gap-4 text-xs"
-            >
+            <div key={row.id} className="mt-5 flex justify-between gap-4 text-xs">
               <span className="text-[#68776b]">
                 {row.product.title} × {quantity}
                 {Object.values(row.attributesJson).length
@@ -339,10 +353,28 @@ export function CheckoutForm({
           )}
           <div className="flex justify-between">
             <span>Shipping</span>
-            <span>
-              {currency} {shippingFee.toFixed(2)}
+            <span className={shipping === 0 ? "font-medium text-[#4b6e52]" : undefined}>
+              {shipping === 0 ? "Free" : `${currency} ${shipping.toFixed(2)}`}
             </span>
           </div>
+          {cart.length > 0 && freeShippingThreshold !== null && shippingFee > 0 && (
+            <div className="rounded-xl bg-[#f3f6f1] p-3 text-[11px] text-[#4b6e52]">
+              <p className="flex items-center gap-1.5">
+                <Truck size={13} />
+                {remainingForFree > 0
+                  ? `Add ${currency} ${remainingForFree.toFixed(2)} more for free shipping`
+                  : "You've unlocked free shipping"}
+              </p>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white">
+                <div
+                  className="h-full rounded-full bg-[#4b6e52] transition-all duration-500"
+                  style={{
+                    width: `${Math.min(100, ((subtotal - discount) / freeShippingThreshold) * 100 || 0)}%`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
           <div className="flex justify-between border-t border-[#1b3b2b]/10 pt-3 text-sm font-semibold text-[#1b3b2b]">
             <span>Total</span>
             <span>

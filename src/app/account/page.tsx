@@ -100,7 +100,7 @@ export default async function AccountPage() {
                 Your first order will be a good one.
               </p>
               <Link
-                href="/#shop"
+                href="/shop"
                 className="mt-3 inline-flex items-center gap-2 text-xs text-[#4e6d54]"
               >
                 Explore the shop <ArrowRight size={13} />

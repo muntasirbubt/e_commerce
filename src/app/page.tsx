@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { ArrowDown, ArrowRight, ArrowUpRight, Search, Sparkles } from "lucide-react";
+import { redirect } from "next/navigation";
+import { ArrowRight, ArrowUpRight, Sparkles } from "lucide-react";
 import { db } from "@/lib/db";
 import { getStoreSettings } from "@/lib/config";
 import { ProductCard } from "@/components/product-card";
@@ -15,50 +16,39 @@ const include = {
   media: { orderBy: { position: "asc" as const } },
   reviews: true,
 };
+const catalogKeys = ["q", "category", "page", "size", "color", "fit", "material", "minPrice", "maxPrice", "sort"] as const;
 
 export default async function Home({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; category?: string; page?: string }>;
+  searchParams: Promise<Partial<Record<(typeof catalogKeys)[number], string>>>;
 }) {
   const [params, settings] = await Promise.all([searchParams, getStoreSettings()]);
-  const page = Math.max(1, Number(params.page) || 1);
-  const search = params.q?.trim();
-  const baseWhere = {
-    isPublished: true,
-    isUpcoming: false,
-    ...(search
-      ? {
-          OR: [
-            { title: { contains: search, mode: "insensitive" as const } },
-            {
-              category: {
-                name: { contains: search, mode: "insensitive" as const },
-              },
-            },
-          ],
-        }
-      : {}),
-    ...(params.category ? { category: { slug: params.category } } : {}),
-  };
-  let products: CatalogProduct[] = [],
+  // The catalog used to live on the homepage; keep old shared links working.
+  const legacy = new URLSearchParams();
+  for (const key of catalogKeys) if (params[key]) legacy.set(key, params[key]!);
+  if (legacy.size) {
+    const category = legacy.get("category");
+    legacy.delete("category");
+    const qs = legacy.toString();
+    redirect(`${category ? `/collections/${encodeURIComponent(category)}` : "/shop"}${qs ? `?${qs}` : ""}`);
+  }
+  let newArrivals: CatalogProduct[] = [],
     offers: CatalogProduct[] = [],
-    upcoming: CatalogProduct[] = [],
-    categories: Awaited<ReturnType<typeof db.category.findMany>> = [],
-    count = 0;
+    upcoming: CatalogProduct[] = [];
   try {
-    [products, offers, upcoming, categories, count] = await Promise.all([
+    [newArrivals, offers, upcoming] = await Promise.all([
       db.product.findMany({
-        where: baseWhere,
+        where: { isPublished: true, isUpcoming: false },
         include,
         orderBy: { createdAt: "desc" },
-        skip: (page - 1) * 9,
-        take: 9,
+        take: 6,
       }),
       db.product.findMany({
         where: {
           isPublished: true,
           isUpcoming: false,
+          featuredOffer: true,
           variants: { some: { salePrice: { not: null } } },
         },
         include,
@@ -66,20 +56,29 @@ export default async function Home({
         take: 3,
       }),
       db.product.findMany({
-        where: { isPublished: true, isUpcoming: true },
+        where: { isPublished: true, isUpcoming: true, featuredUpcoming: true },
         include,
         orderBy: { launchAt: "asc" },
         take: 3,
       }),
-      db.category.findMany({ orderBy: { name: "asc" } }),
-      db.product.count({ where: baseWhere }),
     ]);
   } catch {}
   return (
     <main>
       <div className="bg-[#1b3b2b] px-4 py-2.5 text-center text-[10px] font-medium uppercase tracking-[.2em] text-white/85 sm:text-xs">
-        Thoughtful design, everyday utility <span className="mx-2 text-[#a8c8a6]">·</span>{" "}
-        Complimentary shipping on orders over {settings.currency} 100
+        Thoughtful design, everyday utility
+        {settings.freeShippingThreshold !== null && settings.shippingFee > 0 && (
+          <>
+            <span className="mx-2 text-[#a8c8a6]">·</span>
+            Complimentary shipping on orders over {settings.currency} {settings.freeShippingThreshold}
+          </>
+        )}
+        {settings.shippingFee === 0 && (
+          <>
+            <span className="mx-2 text-[#a8c8a6]">·</span>
+            Complimentary shipping on every order
+          </>
+        )}
       </div>
       <section className="relative overflow-hidden bg-[#e9efe7]">
         <div className="pointer-events-none absolute -right-32 -top-32 size-[40rem] rounded-full border border-[#1b3b2b]/[.07]" />
@@ -87,24 +86,24 @@ export default async function Home({
         <div className="mx-auto grid max-w-7xl items-center gap-10 px-5 py-16 md:min-h-[580px] md:grid-cols-[1.03fr_.97fr] md:py-20 lg:px-8">
           <div className="relative z-10">
             <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-[#1b3b2b]/15 bg-white/50 px-4 py-2 text-[10px] font-semibold uppercase tracking-[.2em] text-[#42644c]">
-              <Sparkles size={13} /> Objects for the considered life
+              <Sparkles size={13} /> Clothing for considered living
             </div>
             <h1 className="max-w-2xl font-serif text-5xl leading-[1.02] tracking-[-.045em] text-[#1b3b2b] sm:text-6xl lg:text-[5.15rem]">
-              A softer way
+              A better way
               <br />
-              to <span className="italic text-[#709277]">live well.</span>
+              to <span className="italic text-[#709277]">wear well.</span>
             </h1>
             <p className="mt-6 max-w-md text-base leading-7 text-[#56685b]">
-              Useful, lasting pieces made to bring a little more intention to the everyday.
-              Thoughtfully chosen. Better by design.
+              Everyday layers, standout essentials, and well-made accessories. Designed to move with
+              you and made to keep.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Link
-                href="#shop"
+                href="/shop"
                 style={{ backgroundColor: "#1b3b2b", color: "#ffffff" }}
                 className="inline-flex items-center gap-3 rounded-full px-6 py-3.5 text-sm font-semibold transition hover:bg-[#294f3b]"
               >
-                Discover the collection <ArrowUpRight size={16} />
+                Shop the collection <ArrowUpRight size={16} />
               </Link>
               <Link
                 href="/about"
@@ -125,7 +124,7 @@ export default async function Home({
                   +
                 </span>
               </div>
-              <span>Loved by thoughtful people everywhere</span>
+              <span>Your next everyday favourite</span>
             </div>
           </div>
           <div className="relative mx-auto aspect-[.95] w-full max-w-[460px]">
@@ -157,10 +156,10 @@ export default async function Home({
       <div className="border-y border-[#1b3b2b]/10 bg-white">
         <div className="mx-auto grid max-w-7xl grid-cols-2 gap-0 px-5 py-3 sm:grid-cols-4 lg:px-8">
           {[
-            ["01", "Considered materials"],
-            ["02", "Made to last"],
-            ["03", "Small-batch finds"],
-            ["04", "Thoughtful delivery"],
+            ["01", "Considered fabrics"],
+            ["02", "Made to move"],
+            ["03", "Small-batch drops"],
+            ["04", "Easy everyday wear"],
           ].map(([n, t]) => (
             <div
               key={n}
@@ -172,21 +171,21 @@ export default async function Home({
           ))}
         </div>
       </div>
-      {offers.length > 0 && (
-        <section id="offers" className="mx-auto max-w-7xl scroll-mt-24 px-5 pt-20 lg:px-8">
-          <div className="mb-7 flex items-end justify-between">
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-[.22em] text-[#73917a]">
-                A little extra
-              </p>
-              <h2 className="mt-2 font-serif text-3xl text-[#1b3b2b] sm:text-4xl">
-                The considered offer
-              </h2>
-            </div>
-            <span className="rounded-full bg-[#edf3eb] px-4 py-2 text-xs text-[#55735b]">
-              Limited time
-            </span>
+      <section id="offers" className="mx-auto max-w-7xl scroll-mt-24 px-5 pt-20 lg:px-8">
+        <div className="mb-7 flex items-end justify-between">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[.22em] text-[#73917a]">
+              A little extra
+            </p>
+            <h2 className="mt-2 font-serif text-3xl text-[#1b3b2b] sm:text-4xl">
+              The considered offer
+            </h2>
           </div>
+          <span className="rounded-full bg-[#edf3eb] px-4 py-2 text-xs text-[#55735b]">
+            Limited time
+          </span>
+        </div>
+        {offers.length ? (
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {offers.map((p) => (
               <ProductCard
@@ -197,21 +196,26 @@ export default async function Home({
               />
             ))}
           </div>
-        </section>
-      )}
-      {upcoming.length > 0 && (
-        <section id="upcoming" className="mx-auto max-w-7xl scroll-mt-24 px-5 pt-20 lg:px-8">
-          <div className="mb-7">
-            <p className="text-[10px] font-semibold uppercase tracking-[.22em] text-[#73917a]">
-              On the horizon
-            </p>
-            <h2 className="mt-2 font-serif text-3xl text-[#1b3b2b] sm:text-4xl">
-              Coming into view
-            </h2>
-            <p className="mt-2 text-sm text-[#758278]">
-              A first look at the things we can’t wait to share.
+        ) : (
+          <div className="rounded-2xl border border-dashed border-[#1b3b2b]/20 bg-white px-6 py-10 text-center">
+            <p className="font-serif text-2xl text-[#1b3b2b]">Fresh offers are on the way</p>
+            <p className="mt-2 text-sm text-[#657367]">
+              Check back soon for selected pieces at special prices.
             </p>
           </div>
+        )}
+      </section>
+      <section id="upcoming" className="mx-auto max-w-7xl scroll-mt-24 px-5 pt-20 lg:px-8">
+        <div className="mb-7">
+          <p className="text-[10px] font-semibold uppercase tracking-[.22em] text-[#73917a]">
+            On the horizon
+          </p>
+          <h2 className="mt-2 font-serif text-3xl text-[#1b3b2b] sm:text-4xl">Coming into view</h2>
+          <p className="mt-2 text-sm text-[#758278]">
+            A first look at the things we can’t wait to share.
+          </p>
+        </div>
+        {upcoming.length ? (
           <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
             {upcoming.map((p) => (
               <article key={p.id} className="soft-card overflow-hidden">
@@ -241,116 +245,69 @@ export default async function Home({
               </article>
             ))}
           </div>
-        </section>
-      )}
-      <section id="shop" className="mx-auto max-w-7xl scroll-mt-24 px-5 py-20 lg:px-8">
-        <div className="mb-8">
-          <p className="text-[10px] font-semibold uppercase tracking-[.22em] text-[#52745b]">
-            The collection
-          </p>
-          <h2 className="mt-2 font-serif text-3xl text-[#1b3b2b] sm:text-4xl">
-            Good things, kept close.
-          </h2>
-        </div>
-        <div className="grid items-start gap-8 lg:grid-cols-[220px_1fr]">
-          <aside className="rounded-2xl border border-[#1b3b2b]/10 bg-white p-5">
-            <h3 className="text-sm font-semibold text-[#263a2c]">Find your thing</h3>
-            <form action="/" className="mt-4">
-              <label className="text-xs font-medium text-[#56645a]">
-                Product or category
-                <div className="mt-2 flex items-center gap-2 rounded-xl border border-[#1b3b2b]/15 px-3 py-2">
-                  <Search size={15} className="shrink-0 text-[#56645a]" />
-                  <input
-                    name="q"
-                    defaultValue={params.q}
-                    placeholder="Search the shop"
-                    className="w-full bg-transparent text-sm text-[#212529] outline-none placeholder:text-[#66736a]"
-                  />
-                </div>
-              </label>
-              {params.category && <input type="hidden" name="category" value={params.category} />}
-              <button className="mt-3 w-full rounded-full bg-[#1b3b2b] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#294f3b]">
-                Search products
-              </button>
-            </form>
-            <div className="mt-6 border-t border-[#1b3b2b]/10 pt-5">
-              <h3 className="text-sm font-semibold text-[#263a2c]">Categories</h3>
-              <nav aria-label="Product categories" className="mt-3 grid gap-1">
-                <Link
-                  href="/#shop"
-                  className={`rounded-lg px-3 py-2.5 text-sm ${!params.category ? "bg-[#e9efe7] font-semibold text-[#1b3b2b]" : "text-[#56645a] hover:bg-[#f5f7f3]"}`}
-                >
-                  All products
-                </Link>
-                {categories.map((c) => (
-                  <Link
-                    key={c.id}
-                    href={`/?category=${c.slug}#shop`}
-                    className={`flex justify-between rounded-lg px-3 py-2.5 text-sm ${params.category === c.slug ? "bg-[#e9efe7] font-semibold text-[#1b3b2b]" : "text-[#56645a] hover:bg-[#f5f7f3]"}`}
-                  >
-                    <span>{c.name}</span>
-                    <span aria-hidden="true">›</span>
-                  </Link>
-                ))}
-              </nav>
-            </div>
-          </aside>
-          <div>
-            <div className="mb-5 flex items-center justify-between gap-3">
-              <p className="text-sm text-[#56645a]">
-                {count} {count === 1 ? "product" : "products"}
-                {search ? ` matching “${search}”` : ""}
-              </p>
-              {(search || params.category) && (
-                <Link
-                  href="/#shop"
-                  className="text-xs font-semibold text-[#315a3b] underline underline-offset-4"
-                >
-                  Clear filters
-                </Link>
-              )}
-            </div>
-            {products.length ? (
-              <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-                {products.map((p) => (
-                  <ProductCard
-                    key={p.id}
-                    product={p}
-                    currency={settings.currency}
-                    threshold={settings.lowStockThreshold}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-[1.5rem] border border-dashed border-[#1b3b2b]/20 bg-white/80 px-6 py-16 text-center">
-                <p className="font-serif text-2xl text-[#1b3b2b]">No matching products</p>
-                <p className="mt-2 text-sm text-[#56645a]">
-                  Try a different product name or category.
-                </p>
-              </div>
-            )}
-            {count > 9 && (
-              <div className="mt-9 flex justify-center gap-3">
-                <Link
-                  aria-disabled={page <= 1}
-                  href={`/?${search ? `q=${encodeURIComponent(search)}&` : ""}${params.category ? `category=${encodeURIComponent(params.category)}&` : ""}page=${page - 1}#shop`}
-                  className="rounded-full border border-[#1b3b2b]/15 px-4 py-2 text-xs text-[#34473b]"
-                >
-                  Previous
-                </Link>
-                <span className="px-3 py-2 text-xs text-[#56645a]">
-                  Page {page} of {Math.ceil(count / 9)}
-                </span>
-                <Link
-                  href={`/?${search ? `q=${encodeURIComponent(search)}&` : ""}${params.category ? `category=${encodeURIComponent(params.category)}&` : ""}page=${page + 1}#shop`}
-                  className="rounded-full border border-[#1b3b2b]/15 px-4 py-2 text-xs text-[#34473b]"
-                >
-                  Next
-                </Link>
-              </div>
-            )}
+        ) : (
+          <div className="rounded-2xl border border-dashed border-[#1b3b2b]/20 bg-white px-6 py-10 text-center">
+            <p className="font-serif text-2xl text-[#1b3b2b]">A new drop is being prepared</p>
+            <p className="mt-2 text-sm text-[#657367]">
+              Our next release will appear here as soon as it is announced.
+            </p>
           </div>
+        )}
+      </section>
+      <section aria-label="Seasonal campaign" className="mx-auto max-w-7xl px-5 pt-16 lg:px-8">
+        <div className="relative overflow-hidden rounded-[1.7rem] bg-[#dce8dc] px-7 py-8 sm:flex sm:items-center sm:justify-between sm:px-10">
+          <div className="pointer-events-none absolute -right-8 -top-20 size-64 rounded-full border border-[#1b3b2b]/10" />
+          <div className="relative">
+            <p className="text-[10px] font-semibold uppercase tracking-[.22em] text-[#52745b]">
+              The everyday edit
+            </p>
+            <h2 className="mt-2 font-serif text-2xl text-[#1b3b2b] sm:text-3xl">
+              Wear it on repeat.
+            </h2>
+            <p className="mt-2 max-w-lg text-sm leading-6 text-[#56685b]">
+              Discover considered layers, easy fits, and accessories made to go further.
+            </p>
+          </div>
+          <Link
+            href="/shop"
+            style={{ backgroundColor: "#1b3b2b", color: "#ffffff" }}
+            className="relative mt-5 inline-flex rounded-full bg-[#1b3b2b] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#294f3b] sm:mt-0"
+          >
+            Explore the edit <ArrowRight size={15} className="ml-2" />
+          </Link>
         </div>
+      </section>
+      <section id="shop" className="mx-auto max-w-7xl scroll-mt-24 px-5 py-20 lg:px-8">
+        <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[.22em] text-[#52745b]">
+              Just landed
+            </p>
+            <h2 className="mt-2 font-serif text-3xl text-[#1b3b2b] sm:text-4xl">New arrivals</h2>
+          </div>
+          <Link
+            href="/shop"
+            className="inline-flex items-center gap-2 rounded-full border border-[#1b3b2b]/15 px-5 py-2.5 text-sm font-semibold text-[#1b3b2b] transition hover:bg-white"
+          >
+            Shop all <ArrowRight size={15} />
+          </Link>
+        </div>
+        {newArrivals.length ? (
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {newArrivals.map((p) => (
+              <ProductCard
+                key={p.id}
+                product={p}
+                currency={settings.currency}
+                threshold={settings.lowStockThreshold}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-[#1b3b2b]/20 bg-white px-6 py-10 text-center">
+            <p className="font-serif text-2xl text-[#1b3b2b]">New pieces are on the way</p>
+          </div>
+        )}
       </section>
       <section className="mx-auto max-w-7xl px-5 pb-8 lg:px-8">
         <div className="relative overflow-hidden rounded-[2rem] bg-[#1b3b2b] px-7 py-10 text-white sm:px-12 sm:py-14">

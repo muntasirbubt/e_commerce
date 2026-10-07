@@ -30,23 +30,28 @@ export default async function CatalogPage() {
           <p className="text-[10px] font-semibold uppercase tracking-[.22em] text-[#52745b]">
             Store management
           </p>
-          <h1 className="mt-1 font-serif text-4xl text-[#1b3b2b]">
-            Catalog studio
-          </h1>
+          <h1 className="mt-1 font-serif text-4xl text-[#1b3b2b]">Catalog studio</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-[#56645a]">
-            Create considered product listings, manage variants, and prepare
-            upcoming launches.
+            Create considered product listings, manage variants, and prepare upcoming launches.
           </p>
         </div>
-        <a
-          href="#product-editor"
-          className="inline-flex items-center gap-2 rounded-full border border-[#1b3b2b] bg-[#dce9db] px-5 py-3 text-sm font-semibold text-[#163823] shadow-sm transition hover:bg-[#c8dcc8]"
-        >
-          <span className="grid size-7 place-items-center rounded-full bg-[#1b3b2b] text-white">
-            <Plus size={16} />
-          </span>
-          Create product
-        </a>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/admin/homepage"
+            className="rounded-full border border-[#1b3b2b]/20 bg-white px-4 py-3 text-sm font-semibold text-[#1b3b2b]"
+          >
+            Homepage blocks
+          </Link>
+          <a
+            href="#product-editor"
+            className="inline-flex items-center gap-2 rounded-full border border-[#1b3b2b] bg-[#dce9db] px-5 py-3 text-sm font-semibold text-[#163823] shadow-sm transition hover:bg-[#c8dcc8]"
+          >
+            <span className="grid size-7 place-items-center rounded-full bg-[#1b3b2b] text-white">
+              <Plus size={16} />
+            </span>
+            Create product
+          </a>
+        </div>
       </div>
       <AdminProductManager
         products={JSON.parse(JSON.stringify(products))}

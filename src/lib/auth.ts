@@ -14,26 +14,32 @@ export const authOptions: NextAuthOptions = {
         const user = await db.user.findUnique({
           where: { email: credentials.email.toLowerCase() },
         });
-        if (!user || !(await compare(credentials.password, user.passwordHash)))
-          return null;
+        if (!user || !(await compare(credentials.password, user.passwordHash))) return null;
         return {
           id: user.id,
           name: user.name,
           email: user.email,
-          role: user.role as "ADMIN" | "CUSTOMER",
+          role: user.role as "ADMIN" | "STAFF" | "CUSTOMER",
         };
       },
     }),
   ],
   callbacks: {
     async jwt({ token, user }) {
-      if (user) token.role = (user as { role?: "ADMIN" | "CUSTOMER" }).role;
+      if (user) token.role = (user as { role?: "ADMIN" | "STAFF" | "CUSTOMER" }).role;
+      if (token.sub) {
+        const currentUser = await db.user.findUnique({
+          where: { id: token.sub },
+          select: { role: true },
+        });
+        token.role = currentUser?.role;
+      }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.sub!;
-        session.user.role = token.role as "ADMIN" | "CUSTOMER";
+        session.user.role = token.role as "ADMIN" | "STAFF" | "CUSTOMER";
       }
       return session;
     },

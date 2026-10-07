@@ -392,7 +392,7 @@ export default async function ProductPage({ params }: Params) {
               </h2>
             </div>
             <Link
-              href="/#shop"
+              href="/shop"
               className="inline-flex items-center gap-2 text-xs text-[#4d6c53]"
             >
               Explore all <ArrowRight size={14} />

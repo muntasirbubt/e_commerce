@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { hash } from "bcryptjs";
 import { db } from "@/lib/db";
+import { sendWelcomeEmail } from "@/lib/mail";
 const schema = z.object({
   name: z.string().min(2).max(80),
   email: z.string().email().max(254),
@@ -26,11 +27,12 @@ export async function POST(request: NextRequest) {
         role: "CUSTOMER",
       },
     });
-    return NextResponse.json({ ok: true }, { status: 201 });
   } catch {
     return NextResponse.json(
       { error: "An account with this email may already exist." },
       { status: 409 },
     );
   }
+  await sendWelcomeEmail({ name, email: email.toLowerCase() });
+  return NextResponse.json({ ok: true }, { status: 201 });
 }

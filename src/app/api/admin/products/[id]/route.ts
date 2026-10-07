@@ -27,10 +27,14 @@ const schema = z.object({
   categoryId: z.string().nullable().optional(),
   isPublished: z.boolean().optional(),
   isUpcoming: z.boolean().optional(),
+  featuredOffer: z.boolean().optional(),
+  featuredUpcoming: z.boolean().optional(),
   launchAt: z.string().datetime().nullable().optional(),
   seoTitle: z.string().max(70).nullable().optional(),
   seoDescription: z.string().max(180).nullable().optional(),
   specifications: z.record(z.string(), z.string()).optional(),
+  fitType: z.string().max(40).nullable().optional(),
+  material: z.string().max(80).nullable().optional(),
   variants: z.array(variant).optional(),
 });
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -66,12 +70,16 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           ...(d.categoryId !== undefined ? { categoryId: d.categoryId } : {}),
           ...(d.isPublished !== undefined ? { isPublished: d.isPublished } : {}),
           ...(d.isUpcoming !== undefined ? { isUpcoming: d.isUpcoming } : {}),
+          ...(d.featuredOffer !== undefined ? { featuredOffer: d.featuredOffer } : {}),
+          ...(d.featuredUpcoming !== undefined ? { featuredUpcoming: d.featuredUpcoming } : {}),
           ...(d.launchAt !== undefined
             ? { launchAt: d.launchAt ? new Date(d.launchAt) : null }
             : {}),
           ...(d.seoTitle !== undefined ? { seoTitle: d.seoTitle } : {}),
           ...(d.seoDescription !== undefined ? { seoDescription: d.seoDescription } : {}),
           ...(d.specifications !== undefined ? { specifications: d.specifications } : {}),
+          ...(d.fitType !== undefined ? { fitType: d.fitType } : {}),
+          ...(d.material !== undefined ? { material: d.material } : {}),
         },
       });
       if (d.media) {
@@ -102,6 +110,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
                 salePrice: v.salePrice ?? null,
                 attributesJson: v.attributesJson,
                 stockQuantity: v.stockQuantity,
+                size: v.attributesJson.Size ?? null,
+                color: v.attributesJson.Color ?? null,
               },
             });
             const change = v.stockQuantity - old.stockQuantity;
@@ -122,6 +132,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
                 salePrice: v.salePrice ?? null,
                 stockQuantity: v.stockQuantity,
                 attributesJson: v.attributesJson,
+                size: v.attributesJson.Size ?? null,
+                color: v.attributesJson.Color ?? null,
               },
             });
             if (v.stockQuantity)

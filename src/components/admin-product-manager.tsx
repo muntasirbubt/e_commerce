@@ -67,9 +67,13 @@ export function AdminProductManager({
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
   const [description, setDescription] = useState("");
+  const [fitType, setFitType] = useState("");
+  const [material, setMaterial] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [published, setPublished] = useState(false);
   const [upcoming, setUpcoming] = useState(false);
+  const [featuredOffer, setFeaturedOffer] = useState(false);
+  const [featuredUpcoming, setFeaturedUpcoming] = useState(false);
   const [launchAt, setLaunchAt] = useState("");
   const [seoTitle, setSeoTitle] = useState("");
   const [seoDescription, setSeoDescription] = useState("");
@@ -100,9 +104,13 @@ export function AdminProductManager({
     setTitle("");
     setSlug("");
     setDescription("");
+    setFitType("");
+    setMaterial("");
     setCategoryId("");
     setPublished(false);
     setUpcoming(false);
+    setFeaturedOffer(false);
+    setFeaturedUpcoming(false);
     setLaunchAt("");
     setSeoTitle("");
     setSeoDescription("");
@@ -138,9 +146,13 @@ export function AdminProductManager({
     setTitle(p.title);
     setSlug(p.slug);
     setDescription(p.description);
+    setFitType(p.fitType ?? "");
+    setMaterial(p.material ?? "");
     setCategoryId(p.categoryId ?? "");
     setPublished(p.isPublished);
     setUpcoming(p.isUpcoming);
+    setFeaturedOffer(p.featuredOffer);
+    setFeaturedUpcoming(p.featuredUpcoming);
     setLaunchAt(p.launchAt ? new Date(p.launchAt).toISOString().slice(0, 16) : "");
     setSeoTitle(p.seoTitle ?? "");
     setSeoDescription(p.seoDescription ?? "");
@@ -262,9 +274,13 @@ export function AdminProductManager({
       title,
       slug,
       description,
+      fitType: fitType || null,
+      material: material || null,
       categoryId: categoryId || null,
       isPublished: published,
       isUpcoming: upcoming,
+      featuredOffer,
+      featuredUpcoming,
       launchAt: launchAt ? new Date(launchAt).toISOString() : null,
       seoTitle,
       seoDescription,
@@ -483,13 +499,40 @@ export function AdminProductManager({
                   <input
                     type="checkbox"
                     checked={upcoming}
-                    onChange={(e) => setUpcoming(e.target.checked)}
+                    onChange={(e) => {
+                      setUpcoming(e.target.checked);
+                      if (!e.target.checked) setFeaturedUpcoming(false);
+                    }}
                   />{" "}
                   Upcoming
                 </label>
               </div>
             </Field>
           </div>
+          <Field label="Homepage placement">
+            <div className="flex flex-wrap items-center gap-5 rounded-xl bg-[#f6f8f4] px-4 py-3">
+              <label className="flex items-center gap-2 text-xs font-medium text-[#34473b]">
+                <input
+                  type="checkbox"
+                  checked={featuredOffer}
+                  onChange={(e) => setFeaturedOffer(e.target.checked)}
+                />
+                Feature in Offers
+              </label>
+              <label className="flex items-center gap-2 text-xs font-medium text-[#34473b]">
+                <input
+                  type="checkbox"
+                  checked={featuredUpcoming}
+                  disabled={!upcoming}
+                  onChange={(e) => setFeaturedUpcoming(e.target.checked)}
+                />
+                Feature in Coming Soon
+              </label>
+              <span className="text-[10px] text-[#738075]">
+                Offers need a sale price; Coming Soon needs Upcoming enabled.
+              </span>
+            </div>
+          </Field>
           <Field label="Product description">
             <textarea
               required
@@ -500,6 +543,29 @@ export function AdminProductManager({
               placeholder="Describe the materials, craft, and details…"
             />
           </Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Fit type">
+              <select
+                value={fitType}
+                onChange={(e) => setFitType(e.target.value)}
+                className="field"
+              >
+                <option value="">Choose fit</option>
+                <option>Regular</option>
+                <option>Slim</option>
+                <option>Oversized</option>
+                <option>Relaxed</option>
+              </select>
+            </Field>
+            <Field label="Fabric / material">
+              <input
+                value={material}
+                onChange={(e) => setMaterial(e.target.value)}
+                className="field"
+                placeholder="Organic cotton, linen, denim…"
+              />
+            </Field>
+          </div>
           <div>
             <div className="mb-2 flex items-end justify-between">
               <div>
